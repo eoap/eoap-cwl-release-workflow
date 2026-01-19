@@ -76,6 +76,8 @@ jobs:
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
         uses: docker://aquasec/trivy:latest
+        env: 
+            TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db"
         with:
           args: >
             image
@@ -86,6 +88,8 @@ jobs:
 
       - name: Generate SBOM (SPDX JSON)
         uses: docker://aquasec/trivy:latest
+        env: 
+            TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db"
         with:
           args: >
             image
