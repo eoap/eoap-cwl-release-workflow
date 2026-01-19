@@ -235,11 +235,18 @@ jobs:
           echo "${{ secrets.registry-password }}" \
             | oras login ghcr.io -u "${{ secrets.registry-user }}" --password-stdin
 
-          for cwl in ${{ inputs.cwl-dir }}/*.cwl
+          cd "${{ inputs.cwl-dir }}"
+
+          find . -name "*.cwl" -type f | while read -r cwl
           do
-            name=$(basename "$cwl" .cwl)
-            oras push \
-              ghcr.io/${OWNER_REPO}/${name}:${TAG} \
-              --artifact-type application/cwl \
-              "$cwl":application/cwl
+            base=$(basename "$cwl")
+            name="${base%.cwl}"
+
+            (
+              cd "$(dirname "$cwl")"
+              oras push \
+                ghcr.io/${OWNER_REPO}/${name}:${TAG} \
+                --artifact-type application/cwl \
+                "${base}:application/cwl"
+            )
           done
