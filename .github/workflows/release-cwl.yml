@@ -1,0 +1,191 @@
+name: Release CWL & Containers (Kaniko / Trivy / Skopeo)
+
+on:
+  workflow_call:
+    inputs:
+      tools:
+        description: JSON array of tool names
+        required: true
+        type: string
+      image-prefix:
+        description: Container registry prefix (e.g. ghcr.io/org/repo)
+        required: true
+        type: string
+      cwl-dir:
+        description: Directory containing CWL files
+        required: true
+        type: string
+    secrets:
+      registry-user:
+        required: true
+      registry-password:
+        required: true
+
+jobs:
+  # ------------------------------------------------------------
+  # Resolve release tag from ref
+  # ------------------------------------------------------------
+  release-meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
+            TAG="latest-dev"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            TAG="latest"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+          else
+            echo "Unsupported ref ${GITHUB_REF}"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------
+  # Build, scan, SBOM, push (per tool)
+  # ------------------------------------------------------------
+  build-scan-push:
+    needs: release-meta
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tool: ${{ fromJSON(inputs.tools) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq skopeo
+          curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
+          sudo mv oras /usr/local/bin/oras
+
+      - name: Build image with Kaniko (to tar)
+        uses: docker://gcr.io/kaniko-project/executor:debug
+        with:
+          args: >
+            --context command-line-tools/${{ matrix.tool }}
+            --dockerfile command-line-tools/${{ matrix.tool }}/Dockerfile
+            --no-push
+            --tar-path image.tar
+
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        uses: docker://aquasec/trivy:latest
+        with:
+          args: >
+            image
+            --input image.tar
+            --severity HIGH,CRITICAL
+            --exit-code 1
+            --no-progress
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: docker://aquasec/trivy:latest
+        with:
+          args: >
+            image
+            --input image.tar
+            --format spdx-json
+            --output sbom.spdx.json
+
+      - name: Push image with Skopeo
+        id: push
+        run: |
+          set -euo pipefail
+          TAG=${{ needs.release-meta.outputs.tag }}
+          IMAGE=${{ inputs.image-prefix }}/${{ matrix.tool }}
+
+          skopeo copy \
+            --dest-creds="${{ secrets.registry-user }}:${{ secrets.registry-password }}" \
+            docker-archive:image.tar \
+            docker://${IMAGE}:${TAG}
+
+          DIGEST=$(skopeo inspect \
+            --creds="${{ secrets.registry-user }}:${{ secrets.registry-password }}" \
+            docker://${IMAGE}:${TAG} | jq -r .Digest)
+
+          echo "digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach SBOM to image digest (OCI)
+        run: |
+          oras attach \
+            --username "${{ secrets.registry-user }}" \
+            --password "${{ secrets.registry-password }}" \
+            "${{ steps.push.outputs.digest }}" \
+            sbom.spdx.json:application/spdx+json
+
+      - name: Export image digest for CWL
+        run: |
+          mkdir -p digests
+          echo "${{ matrix.tool }}=${{ steps.push.outputs.digest }}" >> digests/images.env
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digests
+          path: digests/images.env
+
+  # ------------------------------------------------------------
+  # Rewrite CWL, validate, publish as OCI artifacts
+  # ------------------------------------------------------------
+  publish-cwl:
+    needs:
+      - build-scan-push
+      - release-meta
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-digests
+          path: digests
+
+      - name: Install CWL tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yq cwltool
+          curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
+          sudo mv oras /usr/local/bin/oras
+
+      - name: Rewrite CWL dockerPull → digests
+        run: |
+          set -euo pipefail
+          source digests/images.env
+
+          for cwl in ${{ inputs.cwl-dir }}/*.cwl
+          do
+            while read -r entry
+            do
+              tool="${entry%%=*}"
+              digest="${entry#*=}"
+
+              t="$tool" d="$digest" \
+              yq -i '
+                (.$graph[] | select(.id | endswith(env(t))))
+                .hints.DockerRequirement.dockerPull = env(d)
+              ' "$cwl"
+            done < digests/images.env
+          done
+
+      - name: Validate CWL
+        run: cwltool --validate ${{ inputs.cwl-dir }}/*.cwl
+
+      - name: Publish CWL as OCI artifacts
+        run: |
+          TAG=${{ needs.release-meta.outputs.tag }}
+          OWNER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+          for cwl in ${{ inputs.cwl-dir }}/*.cwl
+          do
+            name=$(basename "$cwl" .cwl)
+            oras push \
+              ghcr.io/${OWNER_REPO}/${name}:${TAG} \
+              --artifact-type application/cwl \
+              "$cwl":application/cwl
+          done
