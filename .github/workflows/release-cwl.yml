@@ -117,7 +117,7 @@ jobs:
 
       - name: Attach SBOM to image digest (OCI)
         run: |
-          echo "${{ secrets.registry-password }}" | oras login ${{ inputs.image-prefix }} -u ${{ secrets.registry-user }} --password-stdin
+          echo "${{ secrets.registry-password }}" | oras login ghcr.io -u ${{ secrets.registry-user }} --password-stdin
           oras attach \
             --username "${{ secrets.registry-user }}" \
             --password "${{ secrets.registry-password }}" \
@@ -186,7 +186,7 @@ jobs:
           TAG=${{ needs.release-meta.outputs.tag }}
           OWNER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-          echo "${{ secrets.registry-password }}" | oras login ${{ inputs.image-prefix }} -u ${{ secrets.registry-user }} --password-stdin
+          echo "${{ secrets.registry-password }}" | oras login ghcr.io -u ${{ secrets.registry-user }} --password-stdin
 
           for cwl in ${{ inputs.cwl-dir }}/*.cwl
           do
