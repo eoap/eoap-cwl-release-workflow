@@ -122,7 +122,8 @@ jobs:
             --username "${{ secrets.registry-user }}" \
             --password "${{ secrets.registry-password }}" \
             --artifact-type application/spdx+json \
-            "${{ steps.push.outputs.digest }}"
+            "${{ steps.push.outputs.digest }}" \
+            sbom.spdx.json:application/spdx+json
 
       - name: Export image digest for CWL
         run: |
