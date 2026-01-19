@@ -198,6 +198,7 @@ jobs:
       - name: Rewrite CWL dockerPull → digests
         run: |
           set -euo pipefail
+          set -x
           while read -r entry
           do
             tool="${entry%%=*}"
@@ -207,7 +208,7 @@ jobs:
             do
               t="$tool" d="$digest" \
               yq -i '
-                (.$graph[] | select(.id | endswith(env(t))))
+                (.$graph[] | select(.id == env(t)))
                 .hints.DockerRequirement.dockerPull = env(d)
               ' "$cwl"
             done
@@ -218,6 +219,7 @@ jobs:
 
       - name: Publish CWL as OCI artifacts
         run: |
+          set -x
           TAG=${{ needs.release-meta.outputs.tag }}
           OWNER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
