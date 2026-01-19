@@ -229,13 +229,17 @@ jobs:
             do
               t="$tool" d="$digest" \
               yq -i '
-                (.$graph[] | select(.id == env(t))) as $tool
-                | if $tool.requirements.DockerRequirement then
-                    $tool.requirements.DockerRequirement.dockerPull = env(d)
-                  elif $tool.hints.DockerRequirement then
-                    $tool.hints.DockerRequirement.dockerPull = env(d)
+                ."$graph"[] |=
+                  if .id == env(t) then
+                    if .requirements.DockerRequirement then
+                      .requirements.DockerRequirement.dockerPull = env(d)
+                    elif .hints.DockerRequirement then
+                      .hints.DockerRequirement.dockerPull = env(d)
+                    else
+                      error("No DockerRequirement found for tool " + env(t))
+                    end
                   else
-                    error("No DockerRequirement found for tool " + env(t))
+                    .
                   end
               ' "$cwl"
             done
