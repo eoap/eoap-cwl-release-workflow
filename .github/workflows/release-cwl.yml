@@ -67,8 +67,8 @@ jobs:
 
       - name: Configure Docker Hub auth for Kaniko
         run: |
-          mkdir -p /kaniko/.docker
-          cat > /kaniko/.docker/config.json <<EOF
+          sudo mkdir -p /kaniko/.docker
+          sudo cat > /kaniko/.docker/config.json <<EOF
           {
             "auths": {
               "https://index.docker.io/v1/": {
