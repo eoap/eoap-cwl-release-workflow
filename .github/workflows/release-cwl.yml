@@ -216,7 +216,15 @@ jobs:
           done < digests/all-images.env
 
       - name: Validate CWL
-        run: cwltool --validate ${{ inputs.cwl-dir }}/*.cwl
+        run: |
+          set -euo pipefail
+          set -x
+          for cwl in ${{ inputs.cwl-dir }}/*.cwl
+          do
+            echo "Validating $cwl"
+            cat "$cwl"
+            cwltool --validate "$cwl"
+          done
 
       - name: Publish CWL as OCI artifacts
         run: |
