@@ -136,13 +136,13 @@ jobs:
       # --------------------------------------------------------
       - name: Export image digest for CWL
         run: |
-          mkdir -p digests
-          echo "${{ matrix.tool }}=$(cat image.digest)" > digests/images.env
+          mkdir -p digests/${{ matrix.tool }}
+          echo "${{ matrix.tool }}=$(cat image.digest)" > digests/${{ matrix.tool }}/images.env
 
       - uses: actions/upload-artifact@v4
         with:
           name: image-digest-${{ matrix.tool }}
-          path: digests/images.env
+          path: digests/${{ matrix.tool }}/images.env
 
   # ------------------------------------------------------------
   # Rewrite CWL, validate, publish as OCI artifacts
