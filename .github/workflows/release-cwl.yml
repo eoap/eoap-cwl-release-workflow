@@ -74,10 +74,13 @@ jobs:
             --no-push
             --tar-path image.tar
 
-      - name: Trivy scan (fail on HIGH/CRITICAL)
-        uses: docker://aquasec/trivy:latest
-        env: 
-            TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db"
+      # --------------------------------------------------------
+      # Trivy scan (relaxed for now)
+      # --------------------------------------------------------
+      - name: Trivy scan (debug mode)
+        uses: docker://aquasec/trivy:0.50.2
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
         with:
           args: >
             image
@@ -87,9 +90,9 @@ jobs:
             --no-progress
 
       - name: Generate SBOM (SPDX JSON)
-        uses: docker://aquasec/trivy:latest
-        env: 
-            TRIVY_DB_REPOSITORY: "ghcr.io/aquasecurity/trivy-db"
+        uses: docker://aquasec/trivy:0.50.2
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
         with:
           args: >
             image
@@ -97,6 +100,9 @@ jobs:
             --format spdx-json
             --output sbom.spdx.json
 
+      # --------------------------------------------------------
+      # Push image and attach SBOM
+      # --------------------------------------------------------
       - name: Push image with Skopeo
         id: push
         run: |
@@ -113,26 +119,29 @@ jobs:
             --creds="${{ secrets.registry-user }}:${{ secrets.registry-password }}" \
             docker://${IMAGE}:${TAG} | jq -r .Digest)
 
-          echo "digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "${IMAGE}@${DIGEST}" > image.digest
 
       - name: Attach SBOM to image digest (OCI)
         run: |
-          echo "${{ secrets.registry-password }}" | oras login ghcr.io -u ${{ secrets.registry-user }} --password-stdin
+          echo "${{ secrets.registry-password }}" \
+            | oras login ghcr.io -u "${{ secrets.registry-user }}" --password-stdin
+
           oras attach \
-            --username "${{ secrets.registry-user }}" \
-            --password "${{ secrets.registry-password }}" \
             --artifact-type application/spdx+json \
-            "${{ steps.push.outputs.digest }}" \
+            "$(cat image.digest)" \
             sbom.spdx.json:application/spdx+json
 
+      # --------------------------------------------------------
+      # Export digest (unique artifact per tool)
+      # --------------------------------------------------------
       - name: Export image digest for CWL
         run: |
           mkdir -p digests
-          echo "${{ matrix.tool }}=${{ steps.push.outputs.digest }}" >> digests/images.env
+          echo "${{ matrix.tool }}=$(cat image.digest)" > digests/images.env
 
       - uses: actions/upload-artifact@v4
         with:
-          name: image-digests
+          name: image-digest-${{ matrix.tool }}
           path: digests/images.env
 
   # ------------------------------------------------------------
@@ -147,9 +156,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Download *all* digest artifacts
       - uses: actions/download-artifact@v4
         with:
-          name: image-digests
           path: digests
 
       - name: Install CWL tooling
@@ -159,25 +168,30 @@ jobs:
           curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
           sudo mv oras /usr/local/bin/oras
 
+      - name: Merge image digests
+        run: |
+          set -euo pipefail
+          cat digests/**/images.env > digests/all-images.env
+          echo "Merged digests:"
+          cat digests/all-images.env
+
       - name: Rewrite CWL dockerPull → digests
         run: |
           set -euo pipefail
-          source digests/images.env
-
-          for cwl in ${{ inputs.cwl-dir }}/*.cwl
+          while read -r entry
           do
-            while read -r entry
-            do
-              tool="${entry%%=*}"
-              digest="${entry#*=}"
+            tool="${entry%%=*}"
+            digest="${entry#*=}"
 
+            for cwl in ${{ inputs.cwl-dir }}/*.cwl
+            do
               t="$tool" d="$digest" \
               yq -i '
                 (.$graph[] | select(.id | endswith(env(t))))
                 .hints.DockerRequirement.dockerPull = env(d)
               ' "$cwl"
-            done < digests/images.env
-          done
+            done
+          done < digests/all-images.env
 
       - name: Validate CWL
         run: cwltool --validate ${{ inputs.cwl-dir }}/*.cwl
@@ -187,7 +201,8 @@ jobs:
           TAG=${{ needs.release-meta.outputs.tag }}
           OWNER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-          echo "${{ secrets.registry-password }}" | oras login ghcr.io -u ${{ secrets.registry-user }} --password-stdin
+          echo "${{ secrets.registry-password }}" \
+            | oras login ghcr.io -u "${{ secrets.registry-user }}" --password-stdin
 
           for cwl in ${{ inputs.cwl-dir }}/*.cwl
           do
