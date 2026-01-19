@@ -179,7 +179,8 @@ jobs:
       - name: Install CWL tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y cwltool
+          sudo apt-get install -y python3-pip
+          sudo pip3 install cwltool
           VERSION=v4.45.1
           BINARY=yq_linux_amd64
           wget -q https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz -O - \
