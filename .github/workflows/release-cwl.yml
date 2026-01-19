@@ -67,8 +67,8 @@ jobs:
 
       - name: Configure Docker Hub auth for Kaniko
         run: |
-          sudo mkdir -p /kaniko/.docker
-          sudo cat > /kaniko/.docker/config.json <<EOF
+          mkdir -p $HOME/.docker
+          cat > $HOME/.docker/config.json <<EOF
           {
             "auths": {
               "https://index.docker.io/v1/": {
@@ -80,6 +80,8 @@ jobs:
 
       - name: Build image with Kaniko (to tar)
         uses: docker://gcr.io/kaniko-project/executor:debug
+        env:
+          DOCKER_CONFIG: /github/home/.docker
         with:
           args: >
             --context command-line-tools/${{ matrix.tool }}
