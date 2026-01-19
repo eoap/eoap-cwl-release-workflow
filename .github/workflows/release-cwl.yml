@@ -117,11 +117,12 @@ jobs:
 
       - name: Attach SBOM to image digest (OCI)
         run: |
+          echo "${{ secrets.registry-password }}" | oras login ${{ inputs.image-prefix }} -u ${{ secrets.registry-user }} --password-stdin
           oras attach \
             --username "${{ secrets.registry-user }}" \
             --password "${{ secrets.registry-password }}" \
-            "${{ steps.push.outputs.digest }}" \
-            sbom.spdx.json:application/spdx+json
+            --artifact-type application/spdx+json \
+            "${{ steps.push.outputs.digest }}"
 
       - name: Export image digest for CWL
         run: |
@@ -184,6 +185,8 @@ jobs:
         run: |
           TAG=${{ needs.release-meta.outputs.tag }}
           OWNER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+          echo "${{ secrets.registry-password }}" | oras login ${{ inputs.image-prefix }} -u ${{ secrets.registry-user }} --password-stdin
 
           for cwl in ${{ inputs.cwl-dir }}/*.cwl
           do
