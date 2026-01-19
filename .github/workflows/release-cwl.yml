@@ -11,8 +11,12 @@ on:
         description: Container registry prefix (e.g. ghcr.io/org/repo)
         required: true
         type: string
-      cwl-dir:
-        description: Directory containing CWL files
+      cwl-workflow-dir:
+        description: Directory containing CWL workflow files
+        required: true
+        type: string
+      cwl-tool-dir:
+        description: Directory containing tool container files
         required: true
         type: string
     secrets:
@@ -84,8 +88,8 @@ jobs:
           DOCKER_CONFIG: /github/home/.docker
         with:
           args: >
-            --context command-line-tools/${{ matrix.tool }}
-            --dockerfile command-line-tools/${{ matrix.tool }}/Dockerfile
+            --context ${{ inputs.cwl-tool-dir }}/${{ matrix.tool }}
+            --dockerfile ${{ inputs.cwl-tool-dir }}/${{ matrix.tool }}/Dockerfile
             --no-push
             --tar-path image.tar
 
