@@ -81,3 +81,104 @@ Those are responsibility of:
 * CWL authors
 * workflow consumers
 * higher-level packaging
+    
+## Consuming CWL OCI artifacts
+
+CWL workflows are distributed as OCI artifacts and can be retrieved using oras.
+
+### Authentication
+
+Access to the GitHub Container Registry requires authentication:
+
+```console
+echo "$GITHUB_TOKEN" | oras login ghcr.io \
+  -u <github-username> \
+  --password-stdin
+```
+
+The token must have at least read:packages permissions.
+
+### Pulling a CWL workflow
+
+To retrieve a specific released workflow:
+
+```console
+oras pull \
+  ghcr.io/eoap/advanced-tooling/app-water-bodies-cloud-native-geoparquet:0.1.2
+```
+
+This command downloads the CWL file into the current directory:
+
+`app-water-bodies-cloud-native-geoparquet.cwl`
+
+The pulled CWL:
+
+* has been validated with cwltool
+* references container images by immutable digest
+* corresponds exactly to release 0.1.2
+
+### Pulling from a rolling channel
+
+To retrieve the latest development version:
+
+```console
+oras pull \
+  ghcr.io/eoap/advanced-tooling/app-water-bodies-cloud-native-geoparquet:latest-dev
+```
+
+Or the latest stable version:
+
+```
+oras pull \
+  ghcr.io/eoap/advanced-tooling/app-water-bodies-cloud-native-geoparquet:latest
+```
+
+These tags are mutable and may change over time.
+
+### Inspecting the artifact (optional)
+
+To inspect the OCI manifest before pulling:
+
+```console
+oras manifest fetch \
+  ghcr.io/eoap/advanced-tooling/app-water-bodies-cloud-native-geoparquet:0.1.2
+```
+
+This displays the artifact type and referenced layers, for example:
+
+```json
+{
+  "artifactType": "application/cwl",
+  "layers": [
+    {
+      "mediaType": "application/cwl",
+      "digest": "sha256:…"
+    }
+  ]
+}
+```
+
+### Discovering related artifacts (optional)
+
+If additional artifacts (e.g. SBOMs or provenance) are attached to the same reference, they can be listed with:
+
+```console
+oras discover \
+  ghcr.io/eoap/advanced-tooling/app-water-bodies-cloud-native-geoparquet:0.1.2
+```
+    
+### Executing the pulled workflow
+
+Once retrieved, the workflow can be executed directly:
+
+```console
+cwltool app-water-bodies-cloud-native-geoparquet.cwl
+```
+
+No additional repository checkout is required.
+
+## Notes on stability
+
+Consumers are encouraged to use semantic version tags (X.Y.Z) for reproducible executions.
+
+The `latest` and `latest-dev` tags are provided for convenience and integration testing only.
