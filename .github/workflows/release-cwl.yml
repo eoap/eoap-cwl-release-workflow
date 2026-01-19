@@ -229,18 +229,20 @@ jobs:
             do
               t="$tool" d="$digest" \
               yq -i '
-                ."$graph"[] |=
-                  if .id == env(t) then
-                    if .requirements.DockerRequirement then
-                      .requirements.DockerRequirement.dockerPull = env(d)
-                    elif .hints.DockerRequirement then
-                      .hints.DockerRequirement.dockerPull = env(d)
-                    else
-                      error("No DockerRequirement found for tool " + env(t))
-                    end
-                  else
-                    .
-                  end
+                .["$graph"] |= map(
+                  (                    
+                    select(.id == env(t))                                                   
+                    | with(                                              
+                        .requirements.DockerRequirement;
+                        .dockerPull = env(d)
+                      )
+                    // with(                                                
+                        .hints.DockerRequirement;
+                        .dockerPull = env(d)
+                      )
+                  )
+                  // .
+                )                                                        
               ' "$cwl"
             done
           done < digests/all-images.env
