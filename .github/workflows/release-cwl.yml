@@ -279,9 +279,17 @@ jobs:
 
             (
               cd "$(dirname "$cwl")"
+
+              transpiler-mate oci-annotations \
+                --workflow-id "${{ inputs.entrypoint }}" \
+                --image-source ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git \
+                --image-revision ${GITHUB_SHA} \
+                "$base"
+
               oras push \
                 ${{ inputs.registry }}/${OWNER_REPO}/${name}:${TAG} \
                 --artifact-type application/cwl \
-                "${base}:application/cwl"
+                "${base}:application/cwl" \
+                --annotation-file annotations.json
             )
           done
