@@ -93,7 +93,7 @@ jobs:
       - validate-cwl
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/terradue/ci-eoap-container:1.0.0
+      image: ghcr.io/terradue/ci-eoap-container:1.0.1
     strategy:
       matrix:
         tool: ${{ fromJSON(inputs.tools) }}
@@ -213,7 +213,7 @@ jobs:
       - release-meta
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/terradue/ci-eoap-container:1.0.0
+      image: ghcr.io/terradue/ci-eoap-container:1.0.1
 
     steps:
       - uses: actions/checkout@v4
