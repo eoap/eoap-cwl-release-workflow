@@ -1,0 +1,85 @@
+name: Release CI Template
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to package and release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          VERSION="${TAG#v}"
+          PACKAGE_BASENAME="eoap-cwl-release-workflow-${VERSION}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package_basename=${PACKAGE_BASENAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archives
+        run: |
+          set -euo pipefail
+
+          PACKAGE_BASENAME="${{ steps.meta.outputs.package_basename }}"
+
+          mkdir -p "dist/${PACKAGE_BASENAME}/.github/workflows" "dist/${PACKAGE_BASENAME}/docs"
+
+          cp .github/workflows/release-cwl.yml "dist/${PACKAGE_BASENAME}/.github/workflows/"
+          cp README.md LICENSE "dist/${PACKAGE_BASENAME}/"
+          cp docs/*.md "dist/${PACKAGE_BASENAME}/docs/"
+
+          tar -C dist -czf "dist/${PACKAGE_BASENAME}.tar.gz" "${PACKAGE_BASENAME}"
+          zip -rq "dist/${PACKAGE_BASENAME}.zip" "dist/${PACKAGE_BASENAME}"
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+
+          PACKAGE_BASENAME="${{ steps.meta.outputs.package_basename }}"
+
+          (
+            cd dist
+            sha256sum \
+              "${PACKAGE_BASENAME}.tar.gz" \
+              "${PACKAGE_BASENAME}.zip" \
+              > "${PACKAGE_BASENAME}.sha256"
+          )
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Release ${{ steps.meta.outputs.tag }}
+          files: |
+            dist/${{ steps.meta.outputs.package_basename }}.tar.gz
+            dist/${{ steps.meta.outputs.package_basename }}.zip
+            dist/${{ steps.meta.outputs.package_basename }}.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

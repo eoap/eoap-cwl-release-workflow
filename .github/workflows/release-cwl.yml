@@ -23,6 +23,10 @@ on:
         description: Directory containing tool container files
         required: true
         type: string
+      entrypoint:
+        description: Workflow entrypoint passed to CWL validation tooling
+        required: true
+        type: string
     secrets:
       registry-user:
         required: true
@@ -58,24 +62,44 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
   # ------------------------------------------------------------
+  # Validate CWL sources before building containers
+  # ------------------------------------------------------------
+  validate-cwl:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/terradue/ci-eoap-container:1.0.0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate CWL
+        run: |
+          set -euo pipefail
+          set -x
+          for cwl in "${{ inputs.cwl-workflow-dir }}"/*.cwl
+          do
+            echo "Validating $cwl"
+            cwltool --validate "$cwl"
+            transpiler-mate codemeta "$cwl" >/tmp/$(basename "${cwl%.cwl}").codemeta.json
+            cwl2ogc cwl2ogc --workflow-id "${{ inputs.entrypoint }}" "$cwl" >/tmp/$(basename "${cwl%.cwl}").ogc.json
+          done
+
+  # ------------------------------------------------------------
   # Build, scan, SBOM, push (per tool)
   # ------------------------------------------------------------
   build-scan-push:
-    needs: release-meta
+    needs:
+      - release-meta
+      - validate-cwl
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/terradue/ci-eoap-container:1.0.0
     strategy:
       matrix:
         tool: ${{ fromJSON(inputs.tools) }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq skopeo
-          curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
-          sudo mv oras /usr/local/bin/oras
 
       - name: Configure Docker Hub auth for Kaniko
         run: |
@@ -184,9 +208,12 @@ jobs:
   # ------------------------------------------------------------
   publish-cwl:
     needs:
+      - validate-cwl
       - build-scan-push
       - release-meta
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/terradue/ci-eoap-container:1.0.0
 
     steps:
       - uses: actions/checkout@v4
@@ -195,19 +222,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: digests
-
-      - name: Install CWL tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip
-          sudo pip3 install cwltool
-          VERSION=v4.45.1
-          BINARY=yq_linux_amd64
-          wget -q https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz -O - \
-          | tar xz
-          sudo mv ${BINARY} /usr/bin/yq
-          curl -sL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz | tar -xz oras
-          sudo mv oras /usr/local/bin/oras
 
       - name: Merge image digests
         run: |
@@ -246,17 +260,6 @@ jobs:
               ' "$cwl"
             done
           done < digests/all-images.env
-
-      - name: Validate CWL
-        run: |
-          set -euo pipefail
-          set -x
-          for cwl in ${{ inputs.cwl-workflow-dir }}/*.cwl
-          do
-            echo "Validating $cwl"
-            cat "$cwl"
-            cwltool --validate "$cwl"
-          done
 
       - name: Publish CWL as OCI artifacts
         run: |
