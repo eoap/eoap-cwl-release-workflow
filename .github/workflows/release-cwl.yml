@@ -81,7 +81,7 @@ jobs:
             echo "Validating $cwl"
             cwltool --validate "$cwl"
             transpiler-mate codemeta "$cwl" >/tmp/$(basename "${cwl%.cwl}").codemeta.json
-            cwl2ogc cwl2ogc --workflow-id "${{ inputs.entrypoint }}" "$cwl" >/tmp/$(basename "${cwl%.cwl}").ogc.json
+            cwl2ogc --workflow-id "${{ inputs.entrypoint }}" "$cwl" >/tmp/$(basename "${cwl%.cwl}").ogc.json
           done
 
   # ------------------------------------------------------------
