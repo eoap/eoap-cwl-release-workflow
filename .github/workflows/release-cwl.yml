@@ -70,7 +70,7 @@ jobs:
       image: ghcr.io/terradue/ci-eoap-container:1.0.1
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate CWL
         run: |
@@ -99,7 +99,7 @@ jobs:
         tool: ${{ fromJSON(inputs.tools) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure Docker Hub auth for Kaniko
         run: |
@@ -216,7 +216,7 @@ jobs:
       image: ghcr.io/terradue/ci-eoap-container:1.0.1
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Download *all* digest artifacts
       - uses: actions/download-artifact@v4
