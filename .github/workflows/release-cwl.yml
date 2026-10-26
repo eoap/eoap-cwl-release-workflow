@@ -198,7 +198,7 @@ jobs:
           mkdir -p digests/${{ matrix.tool }}
           echo "${{ matrix.tool }}=$(cat image.digest)" > digests/${{ matrix.tool }}/images.env
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: image-digest-${{ matrix.tool }}
           path: digests/${{ matrix.tool }}/images.env
